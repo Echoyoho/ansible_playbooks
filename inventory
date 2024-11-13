@@ -1,0 +1,9 @@
+[mysql_servers]
+server1 ansible_host=192.168.31.40
+server2 ansible_host=192.168.31.143
+
+[mysql_servers:vars]
+master_server=server1
+master_host=192.168.31.40
+master_log_file=mysql-bin.000011
+master_log_pos=157

@@ -1,0 +1,14 @@
+[mysqld]
+
+user = mysql
+bind-address = 0.0.0.0
+server-id = {{ server_id }}
+log-bin = mysql-bin
+binlog-do-db = {{ database_name }}
+relay-log = {{ relay_log }}
+read-only = {{ read_only }}
+log-error = /var/log/mysql/error.log
+slow-query-log = 1
+long-query-time = 2
+
+replicate-do-db = {{ database_name }}
