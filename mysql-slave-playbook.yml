@@ -1,0 +1,93 @@
+---
+- name: MySQL slave server config with installation
+  hosts: mysql_servers
+  become: yes
+  vars:
+    server_id: "{{ inventory_hostname }}"
+    database_name: "test_db"
+    relay_log: "mysql-relay-bin"
+    read_only: "{{ 'yes' if inventory_hostname != master_server else 'no' }}"
+    mysql_root_password: "gticrew"
+
+  tasks:
+
+    - name: Update cache
+      apt:
+        update_cache: yes
+
+    - name: Install mySQL
+      apt:
+        name: mysql-server
+        state: present
+
+    - name: Install PyMySQL for Python 3
+      apt:
+        name: python3-pymysql
+        state: present
+      when: ansible_facts['distribution'] == "Ubuntu" or ansible_facts['distribution'] == "Debian"
+
+    - name: Change mysql root password
+      command: mysqladmin -u root password "{{ mysql_root_password }}"
+      args:
+        creates: /var/lib/mysql/mysql
+      ignore_errors: yes
+
+    - name: Copy MySQL config file from template
+      template:
+        src: my.cnf.j2
+        dest: /etc/mysql/my.cnf
+      notify: restart mysql
+
+    - name: Copy DB backup to slave
+      template:
+        src: masterdump.sql
+        dest: /tmp/masterdump.sql
+
+    - name: Ensure MySQL is started
+      service:
+        name: mysql
+        state: started
+        enabled: yes
+
+    - name: Create replication user on master
+      mysql_user:
+        name: "replica_user"
+        password: "gticrew"
+        priv: "*.*:REPLICATION SLAVE"
+        host: "%"
+        state: present
+      vars:
+        login_user: root
+        login_password: "gticrew"
+      when: inventory_hostname == master_server
+
+    - name: Configure MySQL dump
+      mysql_db:
+        name: "{{ database_name }}"
+        state: import
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        login_host: localhost
+        target: "/tmp/masterdump.sql"
+      when: inventory_hostname != master_server
+      delegate_to: localhost
+
+    - name: Config replication on SLAVE
+      mysql_replication:
+        mode: changeprimary
+        master_host: "{{ master_server }}"
+        master_user: "replica_user"
+        master_password: "gticrew"
+        master_log_file: "{{ master_log_file }}"
+        master_log_pos: "{{ master_log_pos }}"
+      when: inventory_hostname != master_server
+
+    - name: Start replication on SLAVE
+      command: mysql -e "START SLAVE;"
+      when: inventory_hostname != master_server
+
+  handlers:
+    - name: restart mysql
+      service:
+        name: mysql
+        state: restarted
